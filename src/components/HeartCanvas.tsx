@@ -2,18 +2,17 @@
 
 import { useEffect, useRef } from "react";
 
-interface Heart {
+const N = 200;       // số hạt cố định
+const SCALE = 10;    // kích thước trái tim lớn (±160px width)
+
+interface Particle {
   x: number;
   y: number;
   vx: number;
   vy: number;
-  alpha: number;
-  fadeSpeed: number;
+  tOffset: number; // vị trí trên đường cong trái tim (0..2π)
   size: number;
-  angle: number;
-  orbitRadius: number;
-  orbitSpeed: number;
-  color: string;
+  hue: number;
 }
 
 interface HeartCanvasProps {
@@ -22,11 +21,8 @@ interface HeartCanvasProps {
 
 export default function HeartCanvas({ paused = false }: HeartCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const heartsRef = useRef<Heart[]>([]);
-  const mouseRef = useRef({ x: -999, y: -999, active: false });
-  const lastMouseRef = useRef({ x: -999, y: -999 });
-  const animFrameRef = useRef<number>(0);
   const pausedRef = useRef(paused);
+  const animFrameRef = useRef<number>(0);
 
   useEffect(() => {
     pausedRef.current = paused;
@@ -45,54 +41,34 @@ export default function HeartCanvas({ paused = false }: HeartCanvasProps) {
     resize();
     window.addEventListener("resize", resize);
 
+    // Khởi tạo N hạt phân tán ngẫu nhiên toàn màn hình
+    const particles: Particle[] = Array.from({ length: N }, (_, i) => ({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      vx: (Math.random() - 0.5) * 0.6,
+      vy: (Math.random() - 0.5) * 0.6,
+      tOffset: (i / N) * Math.PI * 2,
+      size: Math.random() * 3 + 2.5,
+      hue: Math.random() * 20 + 340,
+    }));
+
+    const mouse = { x: -9999, y: -9999, active: false };
+    let attraction = 0;   // 0 = lơ lửng tự do, 1 = hoàn toàn tụ thành tim
+    let globalAngle = 0;  // góc xoay toàn cụm — tạo hiệu ứng quay
+
     const onMouseMove = (e: MouseEvent) => {
-      const { clientX: x, clientY: y } = e;
-
-      // Tính tốc độ di chuyển chuột → spawn nhiều hơn khi quẹt nhanh
-      const dx = x - lastMouseRef.current.x;
-      const dy = y - lastMouseRef.current.y;
-      const speed = Math.sqrt(dx * dx + dy * dy);
-      lastMouseRef.current = { x, y };
-
-      mouseRef.current = { x, y, active: true };
-      if (pausedRef.current) return;
-
-      const count = Math.min(Math.floor(speed * 0.4) + 1, 6);
-      for (let i = 0; i < count; i++) {
-        heartsRef.current.push({
-          x: x + (Math.random() - 0.5) * 16,
-          y: y + (Math.random() - 0.5) * 16,
-          vx: (Math.random() - 0.5) * 5,
-          vy: (Math.random() - 0.5) * 5,
-          alpha: 0.95,
-          fadeSpeed: Math.random() * 0.003 + 0.004,
-          size: Math.random() * 6 + 5,
-          angle: Math.random() * Math.PI * 2,
-          orbitRadius: Math.random() * 25 + 10,
-          orbitSpeed: (Math.random() - 0.5) * 0.06,
-          color: `hsl(${Math.random() * 20 + 340}, 100%, 70%)`,
-        });
-      }
-
-      if (heartsRef.current.length > 200) {
-        heartsRef.current.splice(0, heartsRef.current.length - 200);
-      }
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      mouse.active = true;
     };
-
-    const onMouseLeave = () => {
-      mouseRef.current.active = false;
-    };
+    const onMouseLeave = () => { mouse.active = false; };
 
     window.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseleave", onMouseLeave);
 
     function drawHeart(
-      ctx: CanvasRenderingContext2D,
-      x: number,
-      y: number,
-      size: number,
-      alpha: number,
-      color: string
+      x: number, y: number, size: number,
+      alpha: number, hue: number, glow: boolean
     ) {
       ctx.save();
       ctx.globalAlpha = Math.max(0, alpha);
@@ -105,44 +81,64 @@ export default function HeartCanvas({ paused = false }: HeartCanvasProps) {
       ctx.bezierCurveTo(0, s * 1.4, s, s * 1.0, s, s * 0.4);
       ctx.bezierCurveTo(s, -s * 0.1, s * 0.1, -s * 0.1, 0, s * 0.4);
       ctx.closePath();
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 6;
+      ctx.fillStyle = `hsl(${hue}, 100%, 68%)`;
+      if (glow) {
+        ctx.shadowColor = `hsl(${hue}, 100%, 80%)`;
+        ctx.shadowBlur = 12;
+      }
       ctx.fill();
       ctx.restore();
     }
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      heartsRef.current = heartsRef.current.filter((h) => h.alpha > 0.01);
 
-      for (const h of heartsRef.current) {
-        if (mouseRef.current.active) {
-          // Vị trí đích: quỹ đạo xoay quanh chuột
-          h.angle += h.orbitSpeed;
-          const targetX = mouseRef.current.x + Math.cos(h.angle) * h.orbitRadius;
-          const targetY = mouseRef.current.y + Math.sin(h.angle) * h.orbitRadius;
+      // Ramp attraction lên/xuống mượt mà
+      const shouldAttract = mouse.active && !pausedRef.current;
+      attraction += shouldAttract ? 0.022 : -0.014;
+      attraction = Math.max(0, Math.min(1, attraction));
 
-          // Lực hút về đích
-          h.vx += (targetX - h.x) * 0.022;
-          h.vy += (targetY - h.y) * 0.022;
-        } else {
-          // Bay tự do khi chuột rời màn hình
-          h.vx += (Math.random() - 0.5) * 0.1;
-          h.vy += (Math.random() - 0.5) * 0.1;
+      // Toàn bộ cụm xoay chậm — nhanh hơn khi đã tụ lại
+      globalAngle += 0.006 * (0.2 + attraction * 0.8);
+
+      for (const p of particles) {
+        if (attraction > 0) {
+          // Tính điểm đích trên đường cong trái tim quanh cursor
+          const t = p.tOffset + globalAngle;
+          const sin3 = Math.pow(Math.sin(t), 3);
+          const tx = mouse.x + SCALE * 16 * sin3;
+          const ty = mouse.y - SCALE * (
+            13 * Math.cos(t) -
+            5 * Math.cos(2 * t) -
+            2 * Math.cos(3 * t) -
+            Math.cos(4 * t)
+          );
+          // Lực lò xo kéo về đích
+          p.vx += (tx - p.x) * 0.055 * attraction;
+          p.vy += (ty - p.y) * 0.055 * attraction;
         }
 
-        // Lực cản — giữ hạt không bắn vọt
-        h.vx *= 0.85;
-        h.vy *= 0.85;
+        // Nhiễu ngẫu nhiên khi lơ lửng (giảm dần khi đã tụ)
+        const drift = (1 - attraction) * 0.22;
+        p.vx += (Math.random() - 0.5) * drift;
+        p.vy += (Math.random() - 0.5) * drift;
 
-        h.x += h.vx;
-        h.y += h.vy;
-        h.alpha -= h.fadeSpeed;
+        // Lực cản
+        p.vx *= 0.87;
+        p.vy *= 0.87;
 
-        // Scale down theo alpha — teo nhỏ trước khi biến mất
-        const displaySize = h.size * Math.max(0, h.alpha);
-        drawHeart(ctx, h.x, h.y, displaySize, h.alpha, h.color);
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // Giữ hạt trong màn hình
+        if (p.x < -30) p.vx += 1;
+        if (p.x > canvas.width + 30) p.vx -= 1;
+        if (p.y < -30) p.vy += 1;
+        if (p.y > canvas.height + 30) p.vy -= 1;
+
+        const alpha = 0.3 + attraction * 0.6;
+        const size = p.size * (0.75 + attraction * 0.6);
+        drawHeart(p.x, p.y, size, alpha, p.hue, attraction > 0.4);
       }
 
       animFrameRef.current = requestAnimationFrame(animate);
