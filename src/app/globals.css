@@ -33,6 +33,38 @@ body {
   }
 }
 
+/* Letter HTML content styling (rendered in modal) */
+.letter-content p { margin-bottom: 0.75rem; }
+.letter-content p:last-child { margin-bottom: 0; }
+.letter-content strong { color: #c0386b; }
+.letter-content em { color: #a0405a; }
+.letter-content h1 { font-size: 1.25rem; font-weight: 700; color: #c0386b; margin-bottom: 0.5rem; }
+.letter-content h2 { font-size: 1.1rem; font-weight: 700; color: #c0386b; margin-bottom: 0.5rem; }
+.letter-content h3 { font-size: 1rem; font-weight: 700; color: #c0386b; margin-bottom: 0.25rem; }
+.letter-content ul { list-style: none; padding-left: 0.5rem; margin-bottom: 0.75rem; }
+.letter-content ol { list-style: decimal; padding-left: 1.25rem; margin-bottom: 0.75rem; }
+.letter-content li::before { content: "♥"; margin-right: 0.5rem; color: #f9a8d4; }
+.letter-content blockquote { border-left: 4px solid #ffb3c6; padding-left: 1rem; font-style: italic; color: #a0405a; margin: 0.75rem 0; }
+.letter-content hr { border: none; border-top: 1px solid #fce7f3; margin: 1rem 0; }
+.letter-content a { text-decoration: underline; color: #ff6b9d; }
+.letter-content br { display: block; margin-bottom: 0.25rem; }
+
+/* WYSIWYG editor content area */
+.wysiwyg-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #c0a0b0;
+  font-style: italic;
+  pointer-events: none;
+}
+.wysiwyg-editor:focus { outline: none; }
+.wysiwyg-editor strong { color: #c0386b; }
+.wysiwyg-editor em { color: #a0405a; }
+.wysiwyg-editor ul { list-style: disc; padding-left: 1.25rem; margin: 0.25rem 0; }
+.wysiwyg-editor blockquote { border-left: 3px solid #ffb3c6; padding-left: 0.75rem; font-style: italic; color: #a0405a; margin: 0.25rem 0; }
+.wysiwyg-editor hr { border: none; border-top: 1px solid #fce7f3; margin: 0.5rem 0; }
+.wysiwyg-editor p { margin: 0 0 0.25rem; }
+.wysiwyg-editor div { margin: 0; }
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
