@@ -2,21 +2,47 @@
 
 import { useEffect, useRef } from "react";
 
-const N = 200;       // số hạt cố định
-const SCALE = 10;    // kích thước trái tim lớn (±160px width)
+const N = 120;
+const SPRITE_SIZE = 9;       // half-size of sprite canvas
+const REPEL_RADIUS = 110;
+const REPEL_STRENGTH = 0.9;
+const MAX_SPEED = 3.5;
 
 interface Particle {
   x: number;
   y: number;
   vx: number;
   vy: number;
-  tOffset: number; // vị trí trên đường cong trái tim (0..2π)
+  naturalSpeed: number;
   size: number;
-  hue: number;
+  alpha: number;
+  spriteIndex: number;
 }
 
 interface HeartCanvasProps {
   paused?: boolean;
+}
+
+function buildSprites(): OffscreenCanvas[] {
+  const HUES = [340, 347, 352, 357, 362];
+  return HUES.map((hue) => {
+    const sz = SPRITE_SIZE * 2;
+    const oc = new OffscreenCanvas(sz, sz);
+    const ox = oc.getContext("2d")!;
+    const cx = SPRITE_SIZE;
+    const cy = SPRITE_SIZE;
+    const s = SPRITE_SIZE * 0.85;
+    ox.beginPath();
+    ox.moveTo(cx, cy + s * 0.4);
+    ox.bezierCurveTo(cx - s * 0.1, cy - s * 0.1, cx - s, cy - s * 0.1, cx - s, cy + s * 0.4);
+    ox.bezierCurveTo(cx - s, cy + s * 1.0, cx, cy + s * 1.4, cx, cy + s * 1.6);
+    ox.bezierCurveTo(cx, cy + s * 1.4, cx + s, cy + s * 1.0, cx + s, cy + s * 0.4);
+    ox.bezierCurveTo(cx + s, cy - s * 0.1, cx + s * 0.1, cy - s * 0.1, cx, cy + s * 0.4);
+    ox.closePath();
+    ox.fillStyle = `hsl(${hue}, 100%, 68%)`;
+    ox.fill();
+    return oc;
+  });
 }
 
 export default function HeartCanvas({ paused = false }: HeartCanvasProps) {
@@ -34,6 +60,9 @@ export default function HeartCanvas({ paused = false }: HeartCanvasProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Check OffscreenCanvas support
+    if (typeof OffscreenCanvas === "undefined") return;
+
     const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -41,20 +70,29 @@ export default function HeartCanvas({ paused = false }: HeartCanvasProps) {
     resize();
     window.addEventListener("resize", resize);
 
-    // Khởi tạo N hạt phân tán ngẫu nhiên toàn màn hình
-    const particles: Particle[] = Array.from({ length: N }, (_, i) => ({
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
-      vx: (Math.random() - 0.5) * 0.6,
-      vy: (Math.random() - 0.5) * 0.6,
-      tOffset: (i / N) * Math.PI * 2,
-      size: Math.random() * 3 + 2.5,
-      hue: Math.random() * 20 + 340,
-    }));
+    const sprites = buildSprites();
+
+    // Khởi tạo particles phân bổ đều theo grid + jitter
+    const cols = Math.ceil(Math.sqrt(N * (window.innerWidth / window.innerHeight)));
+    const rows = Math.ceil(N / cols);
+    const particles: Particle[] = Array.from({ length: N }, (_, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const naturalSpeed = 0.15 + Math.random() * 0.30;
+      const angle = Math.random() * Math.PI * 2;
+      return {
+        x: (col / cols) * window.innerWidth + (Math.random() - 0.5) * (window.innerWidth / cols),
+        y: (row / rows) * window.innerHeight + (Math.random() - 0.5) * (window.innerHeight / rows),
+        vx: Math.cos(angle) * naturalSpeed,
+        vy: Math.sin(angle) * naturalSpeed,
+        naturalSpeed,
+        size: Math.random() * 4 + 4,
+        alpha: Math.random() * 0.30 + 0.45,
+        spriteIndex: Math.floor(Math.random() * 5),
+      };
+    });
 
     const mouse = { x: -9999, y: -9999, active: false };
-    let attraction = 0;   // 0 = lơ lửng tự do, 1 = hoàn toàn tụ thành tim
-    let globalAngle = 0;  // góc xoay toàn cụm — tạo hiệu ứng quay
 
     const onMouseMove = (e: MouseEvent) => {
       mouse.x = e.clientX;
@@ -62,85 +100,63 @@ export default function HeartCanvas({ paused = false }: HeartCanvasProps) {
       mouse.active = true;
     };
     const onMouseLeave = () => { mouse.active = false; };
-
     window.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseleave", onMouseLeave);
-
-    function drawHeart(
-      x: number, y: number, size: number,
-      alpha: number, hue: number, glow: boolean
-    ) {
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, alpha);
-      ctx.translate(x, y);
-      ctx.beginPath();
-      const s = size / 2;
-      ctx.moveTo(0, s * 0.4);
-      ctx.bezierCurveTo(-s * 0.1, -s * 0.1, -s, -s * 0.1, -s, s * 0.4);
-      ctx.bezierCurveTo(-s, s * 1.0, 0, s * 1.4, 0, s * 1.6);
-      ctx.bezierCurveTo(0, s * 1.4, s, s * 1.0, s, s * 0.4);
-      ctx.bezierCurveTo(s, -s * 0.1, s * 0.1, -s * 0.1, 0, s * 0.4);
-      ctx.closePath();
-      ctx.fillStyle = `hsl(${hue}, 100%, 68%)`;
-      if (glow) {
-        ctx.shadowColor = `hsl(${hue}, 100%, 80%)`;
-        ctx.shadowBlur = 12;
-      }
-      ctx.fill();
-      ctx.restore();
-    }
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Ramp attraction lên/xuống mượt mà
-      const shouldAttract = mouse.active && !pausedRef.current;
-      attraction += shouldAttract ? 0.022 : -0.014;
-      attraction = Math.max(0, Math.min(1, attraction));
-
-      // Toàn bộ cụm xoay chậm — nhanh hơn khi đã tụ lại
-      globalAngle += 0.006 * (0.2 + attraction * 0.8);
-
       for (const p of particles) {
-        if (attraction > 0) {
-          // Tính điểm đích trên đường cong trái tim quanh cursor
-          const t = p.tOffset + globalAngle;
-          const sin3 = Math.pow(Math.sin(t), 3);
-          const tx = mouse.x + SCALE * 16 * sin3;
-          const ty = mouse.y - SCALE * (
-            13 * Math.cos(t) -
-            5 * Math.cos(2 * t) -
-            2 * Math.cos(3 * t) -
-            Math.cos(4 * t)
-          );
-          // Lực lò xo kéo về đích
-          p.vx += (tx - p.x) * 0.055 * attraction;
-          p.vy += (ty - p.y) * 0.055 * attraction;
+        // --- Physics ---
+
+        // 1. Repulsion từ chuột (chỉ khi không paused)
+        if (mouse.active && !pausedRef.current) {
+          const dx = p.x - mouse.x;
+          const dy = p.y - mouse.y;
+          const distSq = dx * dx + dy * dy;
+          const dist = Math.sqrt(distSq);
+          if (dist < REPEL_RADIUS && dist > 0) {
+            const force = (1 - dist / REPEL_RADIUS) * REPEL_STRENGTH;
+            p.vx += (dx / dist) * force;
+            p.vy += (dy / dist) * force;
+          }
         }
 
-        // Nhiễu ngẫu nhiên khi lơ lửng (giảm dần khi đã tụ)
-        const drift = (1 - attraction) * 0.22;
-        p.vx += (Math.random() - 0.5) * drift;
-        p.vy += (Math.random() - 0.5) * drift;
+        // 2. Giữ tốc độ gần natural speed (anti-gravity: không tắt dần)
+        const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        if (speed > 0) {
+          // Nudge nhẹ về natural speed — đủ để không tăng tốc vô hạn
+          p.vx += ((p.vx / speed) * p.naturalSpeed - p.vx) * 0.012;
+          p.vy += ((p.vy / speed) * p.naturalSpeed - p.vy) * 0.012;
+        }
 
-        // Lực cản
-        p.vx *= 0.87;
-        p.vy *= 0.87;
+        // 3. Giới hạn tốc độ tối đa (sau repulsion)
+        const spd2 = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        if (spd2 > MAX_SPEED) {
+          p.vx *= MAX_SPEED / spd2;
+          p.vy *= MAX_SPEED / spd2;
+        }
 
+        // 4. Cập nhật vị trí
         p.x += p.vx;
         p.y += p.vy;
 
-        // Giữ hạt trong màn hình
-        if (p.x < -30) p.vx += 1;
-        if (p.x > canvas.width + 30) p.vx -= 1;
-        if (p.y < -30) p.vy += 1;
-        if (p.y > canvas.height + 30) p.vy -= 1;
+        // 5. Wrap-around edges
+        if (p.x < -12) p.x = canvas.width + 12;
+        else if (p.x > canvas.width + 12) p.x = -12;
+        if (p.y < -12) p.y = canvas.height + 12;
+        else if (p.y > canvas.height + 12) p.y = -12;
 
-        const alpha = 0.3 + attraction * 0.6;
-        const size = p.size * (0.75 + attraction * 0.6);
-        drawHeart(p.x, p.y, size, alpha, p.hue, attraction > 0.4);
+        // --- Draw ---
+        const sprite = sprites[p.spriteIndex];
+        const ratio = p.size / SPRITE_SIZE;
+        const dw = sprite.width * ratio;
+        const dh = sprite.height * ratio;
+        ctx.globalAlpha = p.alpha;
+        ctx.drawImage(sprite, p.x - dw / 2, p.y - dh / 2, dw, dh);
       }
 
+      ctx.globalAlpha = 1;
       animFrameRef.current = requestAnimationFrame(animate);
     };
     animate();
