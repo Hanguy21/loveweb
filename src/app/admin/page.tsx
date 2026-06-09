@@ -7,6 +7,7 @@ import {
   getProposal, saveProposal, ProposalConfig,
 } from "@/lib/messages";
 import { createClient } from "@/utils/supabase/client";
+import MarkdownEditor from "@/components/MarkdownEditor";
 
 interface ResponseLog {
   id: string;
@@ -176,7 +177,7 @@ export default function AdminPage() {
                           />
                         </div>
                       </div>
-                      <Field label="Nội dung" value={msg.content} onChange={(v) => handleMsgChange(msg.id, "content", v)} multiline />
+                      <MarkdownEditor label="Nội dung" value={msg.content} onChange={(v) => handleMsgChange(msg.id, "content", v)} />
                     </div>
                   </div>
                 ))}
