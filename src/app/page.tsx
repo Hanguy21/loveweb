@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { getStoredMessages, getStoredProposal, Message, ProposalConfig } from "@/lib/messages";
+import { getMessages, getProposal, Message, ProposalConfig } from "@/lib/messages";
 import LetterModal from "@/components/LetterModal";
 import ProgressBar from "@/components/ProgressBar";
 import FinalProposal from "@/components/FinalProposal";
@@ -20,8 +20,8 @@ export default function Home() {
   const [showProposal, setShowProposal] = useState(false);
 
   useEffect(() => {
-    setMessages(getStoredMessages());
-    setProposal(getStoredProposal());
+    getMessages().then(setMessages);
+    getProposal().then(setProposal);
   }, []);
 
   function handleFind(id: number) {
@@ -43,14 +43,11 @@ export default function Home() {
   return (
     <main
       className="min-h-screen overflow-hidden relative"
-      style={{
-        background: "linear-gradient(160deg, #a1c4fd 0%, #c2e9fb 40%, #fbc2eb 80%, #f9a8d4 100%)",
-      }}
+      style={{ background: "linear-gradient(160deg, #a1c4fd 0%, #c2e9fb 40%, #fbc2eb 80%, #f9a8d4 100%)" }}
     >
       <Clouds />
       <HeartCanvas paused={openMessage !== null || showProposal} />
       <MusicPlayer />
-
       <ProgressBar found={foundIds.size} total={messages.length} />
 
       {messages.map((msg) => (

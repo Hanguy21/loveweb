@@ -4,6 +4,12 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 import { ProposalConfig } from "@/lib/messages";
+import { createClient } from "@/utils/supabase/client";
+
+async function logResponse(answer: "yes" | "no") {
+  const supabase = createClient();
+  await supabase.from("responses").insert({ answer });
+}
 
 interface Props {
   show: boolean;
@@ -32,14 +38,17 @@ export default function FinalProposal({ show, config }: Props) {
 
   function handleYes() {
     setAnswered("yes");
+    logResponse("yes");
     for (let i = 0; i < 5; i++) {
       setTimeout(() => launchConfetti(), i * 400);
     }
   }
 
   function handleNo() {
-    setNoCount((c) => c + 1);
+    const next = noCount + 1;
+    setNoCount(next);
     setNoPos({ x: Math.random() * 60 - 30, y: Math.random() * 60 - 30 });
+    if (next === 1) logResponse("no");
   }
 
   const noButtonSize = Math.max(0.4, 1 - noCount * 0.15);

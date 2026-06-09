@@ -3,9 +3,16 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  getStoredMessages, saveMessages, Message,
-  getStoredProposal, saveProposal, ProposalConfig,
+  getMessages, saveMessages, Message,
+  getProposal, saveProposal, ProposalConfig,
 } from "@/lib/messages";
+import { createClient } from "@/utils/supabase/client";
+
+interface ResponseLog {
+  id: string;
+  answer: "yes" | "no";
+  created_at: string;
+}
 
 const ADMIN_PASSWORD = "matkhau123";
 
@@ -52,14 +59,34 @@ export default function AdminPage() {
   const [pwError, setPwError] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [proposal, setProposal] = useState<ProposalConfig | null>(null);
+  const [responses, setResponses] = useState<ResponseLog[]>([]);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    if (authed) {
-      setMessages(getStoredMessages());
-      setProposal(getStoredProposal());
-    }
+    if (!authed) return;
+    getMessages().then(setMessages);
+    getProposal().then(setProposal);
+    fetchResponses();
+
+    // Real-time: cập nhật log ngay khi có phản hồi mới
+    const supabase = createClient();
+    const channel = supabase
+      .channel("responses-changes")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "responses" }, (payload) => {
+        setResponses((prev) => [payload.new as ResponseLog, ...prev]);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [authed]);
+
+  async function fetchResponses() {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("responses")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (data) setResponses(data as ResponseLog[]);
+  }
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -77,9 +104,11 @@ export default function AdminPage() {
     setSaved(false);
   }
 
-  function handleSave() {
-    saveMessages(messages);
-    if (proposal) saveProposal(proposal);
+  async function handleSave() {
+    await Promise.all([
+      saveMessages(messages),
+      proposal ? saveProposal(proposal) : Promise.resolve(),
+    ]);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   }
@@ -173,6 +202,41 @@ export default function AdminPage() {
                   </div>
                 </div>
               )}
+
+              {/* Response log */}
+              <div className="mt-6 rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,105,135,0.2)" }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-xl">📊</span>
+                  <span className="text-sm font-bold uppercase tracking-wide" style={{ color: "#c0386b" }}>Phản hồi của người ấy</span>
+                  {responses.length > 0 && (
+                    <span className="ml-auto text-xs px-2 py-1 rounded-full font-semibold" style={{ background: "rgba(255,105,135,0.15)", color: "#c0386b" }}>
+                      {responses.length} lần
+                    </span>
+                  )}
+                </div>
+
+                {responses.length === 0 ? (
+                  <p className="text-sm text-center py-4" style={{ color: "#b07090" }}>
+                    Chưa có phản hồi nào... 🕐
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2 max-h-52 overflow-y-auto pr-1">
+                    {responses.map((r) => (
+                      <div key={r.id} className="flex items-center justify-between px-3 py-2 rounded-xl" style={{ background: r.answer === "yes" ? "rgba(255,105,135,0.12)" : "rgba(180,180,180,0.12)" }}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{r.answer === "yes" ? "💗" : "🙈"}</span>
+                          <span className="text-sm font-semibold" style={{ color: r.answer === "yes" ? "#c0386b" : "#888" }}>
+                            {r.answer === "yes" ? "Đồng ý rồi!" : "Bấm Không"}
+                          </span>
+                        </div>
+                        <span className="text-xs" style={{ color: "#b07090" }}>
+                          {new Date(r.created_at).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="mt-8 flex items-center justify-between">
                 <a href="/" className="text-sm underline" style={{ color: "#9d5672" }}>← Xem trang chính</a>
