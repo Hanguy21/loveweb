@@ -89,6 +89,13 @@ export default function AdminPage() {
     if (data) setResponses(data as ResponseLog[]);
   }
 
+  async function handleClearResponses() {
+    if (!confirm("Xóa toàn bộ log phản hồi?")) return;
+    const supabase = createClient();
+    await supabase.from("responses").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    setResponses([]);
+  }
+
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     if (pw === ADMIN_PASSWORD) { setAuthed(true); setPwError(false); }
@@ -210,9 +217,20 @@ export default function AdminPage() {
                   <span className="text-xl">📊</span>
                   <span className="text-sm font-bold uppercase tracking-wide" style={{ color: "#c0386b" }}>Phản hồi của người ấy</span>
                   {responses.length > 0 && (
-                    <span className="ml-auto text-xs px-2 py-1 rounded-full font-semibold" style={{ background: "rgba(255,105,135,0.15)", color: "#c0386b" }}>
-                      {responses.length} lần
-                    </span>
+                    <>
+                      <span className="ml-auto text-xs px-2 py-1 rounded-full font-semibold" style={{ background: "rgba(255,105,135,0.15)", color: "#c0386b" }}>
+                        {responses.length} lần
+                      </span>
+                      <motion.button
+                        className="text-xs px-3 py-1 rounded-full font-semibold"
+                        style={{ background: "rgba(180,180,180,0.15)", color: "#999", border: "1px solid rgba(180,180,180,0.3)" }}
+                        whileHover={{ scale: 1.05, background: "rgba(255,80,80,0.12)", color: "#e05" }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleClearResponses}
+                      >
+                        🗑 Xóa log
+                      </motion.button>
+                    </>
                   )}
                 </div>
 
